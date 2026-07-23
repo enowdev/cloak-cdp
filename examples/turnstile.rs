@@ -5,7 +5,7 @@
 //!
 //! Run with: `cargo run --example turnstile`
 
-use cloakbrowser::{launch, LaunchOptions};
+use cloak_cdp::{launch, LaunchOptions};
 use futures::StreamExt;
 use std::time::Duration;
 

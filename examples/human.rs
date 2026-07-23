@@ -5,8 +5,8 @@
 //!
 //! Run with: `cargo run --example human`
 
-use cloakbrowser::human::{human_move, human_type, resolve_config, CdpKeyboard, CdpMouse};
-use cloakbrowser::{launch, LaunchOptions};
+use cloak_cdp::human::{human_move, human_type, resolve_config, CdpKeyboard, CdpMouse};
+use cloak_cdp::{launch, LaunchOptions};
 use futures::StreamExt;
 use std::time::Duration;
 

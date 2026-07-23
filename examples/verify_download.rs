@@ -4,7 +4,7 @@
 //! Run with:
 //!   CLOAKBROWSER_CACHE_DIR=/tmp/cloak-dl-test cargo run --example verify_download
 
-use cloakbrowser::download::ensure_binary;
+use cloak_cdp::download::ensure_binary;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

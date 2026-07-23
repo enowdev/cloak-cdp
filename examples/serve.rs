@@ -6,7 +6,7 @@
 #[cfg(feature = "serve")]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    use cloakbrowser::serve::{run, ServeConfig};
+    use cloak_cdp::serve::{run, ServeConfig};
     let port: u16 = std::env::var("PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(9222);
     println!("cloakserve listening on 127.0.0.1:{port}");
     run(ServeConfig {

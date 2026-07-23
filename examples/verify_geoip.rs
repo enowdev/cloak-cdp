@@ -5,7 +5,7 @@
 //!
 //! Run: CLOAKBROWSER_CACHE_DIR=/tmp/cloak-geo cargo run --example verify_geoip
 
-use cloakbrowser::geoip::{resolve_proxy_exit_ip, resolve_proxy_geo_with_ip};
+use cloak_cdp::geoip::{resolve_proxy_exit_ip, resolve_proxy_geo_with_ip};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

@@ -1,7 +1,7 @@
 //! Live test: widevine hint-seeding (no-op off Linux) + CDM fetch (Linux x86-64
 //! only — errors cleanly elsewhere).
 
-use cloakbrowser::widevine::{fetch_widevine_cdm, resolve_widevine_cdm_dir, seed_widevine_hint};
+use cloak_cdp::widevine::{fetch_widevine_cdm, resolve_widevine_cdm_dir, seed_widevine_hint};
 use std::path::Path;
 
 #[tokio::main]

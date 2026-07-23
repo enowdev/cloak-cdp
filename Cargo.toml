@@ -1,10 +1,17 @@
 [package]
-name = "cloakbrowser"
+name = "cloak-cdp"
 version = "0.1.0"
 edition = "2021"
-description = "Stealth Chromium launcher — Rust port of CloakBrowser (drop-in chromiumoxide-based automation with source-level fingerprint patches)"
+rust-version = "1.75"
+authors = ["enowdev <enowdev@gmail.com>"]
+description = "Unofficial Rust port of CloakBrowser: stealth Chromium automation over CDP (chromiumoxide) with source-level fingerprint patches. Not affiliated with CloakHQ."
 license = "MIT"
-repository = "https://github.com/CloakHQ/cloakbrowser"
+readme = "README.md"
+repository = "https://github.com/enowdev/cloak-cdp"
+homepage = "https://github.com/enowdev/cloak-cdp"
+keywords = ["chromium", "cdp", "stealth", "automation", "chromiumoxide"]
+categories = ["web-programming", "api-bindings"]
+exclude = ["/docs", "/.github", "*.png"]
 
 [dependencies]
 # Async runtime

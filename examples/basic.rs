@@ -3,7 +3,7 @@
 //! Run with: `cargo run --example basic`
 //! Requires the stealth Chromium binary (auto-downloaded on first launch).
 
-use cloakbrowser::{launch, LaunchOptions};
+use cloak_cdp::{launch, LaunchOptions};
 use futures::StreamExt;
 
 #[tokio::main]
