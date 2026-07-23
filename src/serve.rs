@@ -599,8 +599,20 @@ impl ChromePool {
         let port = self.allocate_port()?;
         let user_data_dir = self.data_dir.join(&seed_key);
         std::fs::create_dir_all(&user_data_dir)?;
+        // A stale SingletonLock (from a previous run that didn't clean up its
+        // profile) makes Chrome abort on start ("Failed to create ...
+        // SingletonLock: File exists"). Remove it before spawning.
+        for lock in ["SingletonLock", "SingletonSocket", "SingletonCookie"] {
+            let _ = std::fs::remove_file(user_data_dir.join(lock));
+        }
 
         let mut full_args: Vec<String> = Vec::new();
+        // When spawning Chrome directly (not via a launcher that injects it),
+        // headless must be an explicit flag, otherwise Chrome opens a GUI window
+        // and, in headless-less CI/servers, never brings up the CDP HTTP endpoint.
+        if self.headless {
+            full_args.push("--headless=new".to_string());
+        }
         full_args.extend(BASE_CHROME_ARGS.iter().map(|s| s.to_string()));
         full_args.extend(chrome_args);
         full_args.extend(self.global_args.iter().cloned());

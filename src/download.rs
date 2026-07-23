@@ -643,7 +643,9 @@ fn extract_tar(archive_path: &Path, dest_dir: &Path) -> Result<()> {
                 continue;
             }
         } else {
-            let member_path = dest_dir.join(&name);
+            // Resolve the member against the *canonicalized* dest so a symlinked
+            // cache path (e.g. macOS /tmp -> /private/tmp) doesn't false-positive.
+            let member_path = dest_resolved.join(&name);
             if !is_within(&dest_resolved, &member_path) {
                 return Err(CloakError::PathTraversal(name.display().to_string()));
             }
@@ -670,7 +672,7 @@ fn extract_zip(archive_path: &Path, dest_dir: &Path) -> Result<()> {
             .by_index(i)
             .map_err(|e| CloakError::Extraction(e.to_string()))?;
         let name = entry.name().to_string();
-        let member_path = dest_dir.join(&name);
+        let member_path = dest_resolved.join(&name);
         if !is_within(&dest_resolved, &member_path) {
             return Err(CloakError::PathTraversal(name));
         }
