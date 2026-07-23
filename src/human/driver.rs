@@ -24,15 +24,13 @@
 //! - key   → Input.dispatchKeyEvent {type:"keyDown"|"keyUp", ...}
 //! - insert→ Input.insertText
 
-#![cfg(any())] // whole module disabled; see header.
-
 use super::keyboard::{KeyEvent, KeyEventType, RawKeyboard};
 use super::mouse::RawMouse;
-use chromiumoxide::Page;
-use chromiumoxide_cdp::cdp::browser_protocol::input::{
+use chromiumoxide::cdp::browser_protocol::input::{
     DispatchKeyEventParams, DispatchKeyEventType, DispatchMouseEventParams, DispatchMouseEventType,
     InsertTextParams, MouseButton,
 };
+use chromiumoxide::Page;
 use futures::future::BoxFuture;
 
 /// [`RawMouse`] over a chromiumoxide [`Page`].
@@ -115,16 +113,21 @@ pub struct CdpKeyboard<'p> {
 
 impl<'p> CdpKeyboard<'p> {
     async fn key(&self, ty: DispatchKeyEventType, key: &str) {
-        let _ = self
-            .page
-            .execute(
-                DispatchKeyEventParams::builder()
-                    .r#type(ty)
-                    .key(key.to_string())
-                    .build()
-                    .unwrap(),
-            )
-            .await;
+        // Chrome only produces character input for a `keyDown` when the event
+        // carries a `text` field. A single printable character (e.g. "H", "!")
+        // is a character key and must set `text`; named keys like "Shift" /
+        // "Backspace" must NOT (they are non-text control keys). Mirrors how
+        // Puppeteer/DevTools dispatch synthetic keystrokes.
+        let is_char_key = key.chars().count() == 1
+            && key.chars().next().map(|c| !c.is_control()).unwrap_or(false);
+
+        let mut b = DispatchKeyEventParams::builder()
+            .r#type(ty.clone())
+            .key(key.to_string());
+        if is_char_key && matches!(ty, DispatchKeyEventType::KeyDown) {
+            b = b.text(key.to_string()).unmodified_text(key.to_string());
+        }
+        let _ = self.page.execute(b.build().unwrap()).await;
     }
 }
 

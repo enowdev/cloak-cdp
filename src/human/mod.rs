@@ -12,9 +12,11 @@ pub mod keyboard;
 pub mod mouse;
 pub mod scroll;
 
-// Optional CDP driver (clearly-marked, gated off until the chromiumoxide 0.7
-// Input builder surface is confirmed — see `driver.rs`).
+// chromiumoxide CDP driver: implements RawMouse/RawKeyboard over a Page via
+// Input.dispatchMouseEvent / dispatchKeyEvent / insertText.
 pub mod driver;
+
+pub use driver::{CdpKeyboard, CdpMouse};
 
 // --- Re-exports: the public surface described in SPEC-human.md ---
 
