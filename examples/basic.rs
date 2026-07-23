@@ -4,12 +4,11 @@
 //! Requires the stealth Chromium binary (auto-downloaded on first launch).
 
 use cloakbrowser::{launch, LaunchOptions};
+use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber_init();
-
-    let (browser, mut handler) = launch(LaunchOptions {
+    let (mut browser, mut handler) = launch(LaunchOptions {
         headless: false,
         ..Default::default()
     })
@@ -42,8 +41,4 @@ async fn main() -> anyhow::Result<()> {
     browser.close().await?;
     handler_task.await?;
     Ok(())
-}
-
-fn tracing_subscriber_init() {
-    // Best-effort; ignore if no subscriber crate is wired up.
 }
