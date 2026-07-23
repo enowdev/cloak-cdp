@@ -33,6 +33,7 @@ them, replacing the upstream Python/JS wrappers.
 - GeoIP-driven timezone/locale + WebRTC exit-IP spoofing (MaxMind GeoLite2)
 - SOCKS5 / HTTP(S) proxy support
 - Humanize layer: bézier mouse movement, human typing cadence, scroll — over CDP
+- **Anti-redirect / URL blocking** — cancel navigations to matching URL globs so a page can't auto-redirect you away (an addition; upstream has no such feature)
 - `serve` feature: a CDP multiplexer (one Chrome per fingerprint seed on one port)
 - Widevine CDM hint-seeding + fetcher (Linux x86-64)
 
@@ -72,6 +73,30 @@ async fn main() -> anyhow::Result<()> {
 For heavy anti-bot pages (Cloudflare), open `about:blank` then `page.goto(url)`,
 and drain the handler without breaking on a single errored event.
 
+### Anti-redirect (URL blocking)
+
+Stop a page from auto-redirecting you to another site:
+
+```rust
+use cloak_cdp::{launch, LaunchOptions};
+use cloak_cdp::intercept::block_navigations;
+
+let (mut browser, mut handler) = launch(LaunchOptions {
+    // non-empty => request interception is enabled at launch
+    block_urls: vec!["*://ads.example.com/*".into(), "*doubleclick*".into()],
+    ..Default::default()
+}).await?;
+tokio::spawn(async move { while handler.next().await.is_some() {} });
+
+let page = browser.new_page("about:blank").await?;
+let _guard = block_navigations(&page, ["*://ads.example.com/*", "*doubleclick*"]).await?;
+page.goto("https://some-site.com").await?; // redirects to a blocked URL are cancelled
+```
+
+Glob syntax: `*` matches any run of characters; matching is case-insensitive.
+A blocked top-level navigation lands on Chrome's error page (the target is never
+reached); blocked sub-resources are just dropped.
+
 ### CDP multiplexer (`serve` feature)
 
 ```bash
@@ -86,6 +111,7 @@ cargo run --example serve --features serve
 | `basic` | Launch + read stealth signals |
 | `turnstile` | Headed run passing Cloudflare Turnstile |
 | `human` | Bézier mouse move + human typing over CDP |
+| `block_redirect` | Anti-redirect: block auto-redirect to a URL |
 | `verify_download` | Download + Ed25519 verify + extract |
 | `verify_geoip` | GeoIP timezone/locale/exit-IP resolution |
 | `serve` / `serve_client` | CDP multiplexer server + client |

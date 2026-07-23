@@ -23,6 +23,7 @@ pub mod platform;
 pub mod args;
 pub mod download;
 pub mod geoip;
+pub mod intercept;
 pub mod proxy;
 pub mod launcher;
 
@@ -86,6 +87,12 @@ pub struct LaunchOptions {
     pub browser_version: Option<String>,
     /// Open the window maximized where the binary supports it coherently.
     pub start_maximized: bool,
+    /// URL glob patterns to block (anti-redirect). When non-empty, the browser
+    /// is launched with request interception enabled; attach the blocker to a
+    /// page with [`intercept::block_navigations`]. Requests/navigations matching
+    /// any pattern are cancelled, so an auto-redirect to a matching URL is
+    /// prevented and the current page stays. See [`intercept`].
+    pub block_urls: Vec<String>,
 }
 
 impl Default for LaunchOptions {
@@ -101,6 +108,7 @@ impl Default for LaunchOptions {
             extension_paths: Vec::new(),
             browser_version: None,
             start_maximized: false,
+            block_urls: Vec::new(),
         }
     }
 }

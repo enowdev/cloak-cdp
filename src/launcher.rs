@@ -96,6 +96,7 @@ pub async fn launch(opts: LaunchOptions) -> Result<(Browser, Handler)> {
         extension_paths,
         browser_version,
         start_maximized,
+        block_urls,
     } = opts;
 
     // 1. Ensure the stealth binary is present.
@@ -152,7 +153,7 @@ pub async fn launch(opts: LaunchOptions) -> Result<(Browser, Handler)> {
         HeadlessMode::False
     };
 
-    let builder = BrowserConfig::builder()
+    let mut builder = BrowserConfig::builder()
         .chrome_executable(&binary_path)
         .headless_mode(headless_mode)
         .disable_default_args()
@@ -160,6 +161,13 @@ pub async fn launch(opts: LaunchOptions) -> Result<(Browser, Handler)> {
         .args(CHROMIUMOXIDE_DEFAULT_ARGS_KEPT.iter().map(|s| s.to_string()))
         // Our stealth / proxy / webrtc / locale args.
         .args(chrome_args);
+
+    // Anti-redirect / URL blocking: enable CDP request interception so the
+    // caller can attach `intercept::block_navigations`. See [`crate::intercept`].
+    if !block_urls.is_empty() {
+        debug!(patterns = ?block_urls, "request interception enabled for URL blocking");
+        builder = builder.enable_request_intercept();
+    }
 
     let config = builder
         .build()
