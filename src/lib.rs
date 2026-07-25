@@ -93,6 +93,12 @@ pub struct LaunchOptions {
     /// any pattern are cancelled, so an auto-redirect to a matching URL is
     /// prevented and the current page stays. See [`intercept`].
     pub block_urls: Vec<String>,
+    /// Resource categories to block (bandwidth saving for proxies), by
+    /// case-insensitive name: `"stylesheet"`/`"css"`, `"image"`, `"font"`,
+    /// `"media"`, `"script"`, etc. When non-empty, request interception is
+    /// enabled at launch; attach with [`intercept::block_requests`]. Blocking
+    /// images/CSS/fonts/media typically cuts most of a page's transfer.
+    pub block_resources: Vec<String>,
 }
 
 impl Default for LaunchOptions {
@@ -109,6 +115,7 @@ impl Default for LaunchOptions {
             browser_version: None,
             start_maximized: false,
             block_urls: Vec::new(),
+            block_resources: Vec::new(),
         }
     }
 }

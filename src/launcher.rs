@@ -97,6 +97,7 @@ pub async fn launch(opts: LaunchOptions) -> Result<(Browser, Handler)> {
         browser_version,
         start_maximized,
         block_urls,
+        block_resources,
     } = opts;
 
     // 1. Ensure the stealth binary is present.
@@ -162,10 +163,14 @@ pub async fn launch(opts: LaunchOptions) -> Result<(Browser, Handler)> {
         // Our stealth / proxy / webrtc / locale args.
         .args(chrome_args);
 
-    // Anti-redirect / URL blocking: enable CDP request interception so the
-    // caller can attach `intercept::block_navigations`. See [`crate::intercept`].
-    if !block_urls.is_empty() {
-        debug!(patterns = ?block_urls, "request interception enabled for URL blocking");
+    // Anti-redirect / resource blocking: enable CDP request interception so the
+    // caller can attach `intercept::block_requests`. See [`crate::intercept`].
+    if !block_urls.is_empty() || !block_resources.is_empty() {
+        debug!(
+            urls = ?block_urls,
+            resources = ?block_resources,
+            "request interception enabled for URL/resource blocking"
+        );
         builder = builder.enable_request_intercept();
     }
 

@@ -39,11 +39,80 @@ use crate::error::{CloakError, Result};
 use chromiumoxide::cdp::browser_protocol::fetch::{
     ContinueRequestParams, EventRequestPaused, FailRequestParams,
 };
-use chromiumoxide::cdp::browser_protocol::network::ErrorReason;
+use chromiumoxide::cdp::browser_protocol::network::{ErrorReason, ResourceType as CdpResourceType};
 use chromiumoxide::Page;
 use futures::StreamExt;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
+
+/// A network resource category, used to block whole classes of requests to save
+/// proxy bandwidth (e.g. images, stylesheets, fonts, media).
+///
+/// Mirrors CDP's `Network.ResourceType`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ResourceType {
+    Document,
+    Stylesheet,
+    Image,
+    Media,
+    Font,
+    Script,
+    TextTrack,
+    Xhr,
+    Fetch,
+    Prefetch,
+    EventSource,
+    WebSocket,
+    Manifest,
+    Ping,
+    Other,
+}
+
+impl ResourceType {
+    fn from_cdp(rt: &CdpResourceType) -> Option<ResourceType> {
+        Some(match rt {
+            CdpResourceType::Document => ResourceType::Document,
+            CdpResourceType::Stylesheet => ResourceType::Stylesheet,
+            CdpResourceType::Image => ResourceType::Image,
+            CdpResourceType::Media => ResourceType::Media,
+            CdpResourceType::Font => ResourceType::Font,
+            CdpResourceType::Script => ResourceType::Script,
+            CdpResourceType::TextTrack => ResourceType::TextTrack,
+            CdpResourceType::Xhr => ResourceType::Xhr,
+            CdpResourceType::Fetch => ResourceType::Fetch,
+            CdpResourceType::Prefetch => ResourceType::Prefetch,
+            CdpResourceType::EventSource => ResourceType::EventSource,
+            CdpResourceType::WebSocket => ResourceType::WebSocket,
+            CdpResourceType::Manifest => ResourceType::Manifest,
+            CdpResourceType::Ping => ResourceType::Ping,
+            CdpResourceType::Other => ResourceType::Other,
+            _ => return None,
+        })
+    }
+
+    /// Parse a case-insensitive name (e.g. "image", "stylesheet", "css", "font").
+    /// Returns `None` for an unknown name.
+    pub fn parse(s: &str) -> Option<ResourceType> {
+        Some(match s.trim().to_lowercase().as_str() {
+            "document" => ResourceType::Document,
+            "stylesheet" | "css" => ResourceType::Stylesheet,
+            "image" | "img" => ResourceType::Image,
+            "media" => ResourceType::Media,
+            "font" => ResourceType::Font,
+            "script" | "js" => ResourceType::Script,
+            "texttrack" => ResourceType::TextTrack,
+            "xhr" => ResourceType::Xhr,
+            "fetch" => ResourceType::Fetch,
+            "prefetch" => ResourceType::Prefetch,
+            "eventsource" => ResourceType::EventSource,
+            "websocket" | "ws" => ResourceType::WebSocket,
+            "manifest" => ResourceType::Manifest,
+            "ping" => ResourceType::Ping,
+            "other" => ResourceType::Other,
+            _ => return None,
+        })
+    }
+}
 
 /// A compiled URL glob pattern.
 ///
@@ -157,22 +226,82 @@ impl Drop for BlockGuard {
     }
 }
 
-/// Start blocking navigations/requests to any URL matching `patterns` on `page`.
+/// What to block: URL glob patterns and/or whole resource categories.
+///
+/// Blocking resource categories (images, stylesheets, fonts, media, …) is the
+/// usual way to cut proxy bandwidth for scraping — those resources are often the
+/// bulk of a page's transfer.
+///
+/// ```no_run
+/// use cloak_cdp::intercept::{BlockConfig, ResourceType};
+/// let cfg = BlockConfig::new()
+///     .resources([ResourceType::Image, ResourceType::Stylesheet, ResourceType::Font, ResourceType::Media])
+///     .urls(["*doubleclick*"]);
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct BlockConfig {
+    urls: BlockList,
+    resources: std::collections::HashSet<ResourceType>,
+}
+
+impl BlockConfig {
+    /// An empty config (blocks nothing).
+    pub fn new() -> Self {
+        BlockConfig::default()
+    }
+
+    /// Block requests whose URL matches any of these globs (anti-redirect).
+    pub fn urls<I, S>(mut self, patterns: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.urls = BlockList::new(patterns);
+        self
+    }
+
+    /// Block whole resource categories (bandwidth saving).
+    pub fn resources<I>(mut self, types: I) -> Self
+    where
+        I: IntoIterator<Item = ResourceType>,
+    {
+        self.resources = types.into_iter().collect();
+        self
+    }
+
+    /// Parse resource categories from case-insensitive names (unknown names are
+    /// ignored). Useful for wiring from config/CLI strings.
+    pub fn resources_from_names<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.resources = names
+            .into_iter()
+            .filter_map(|n| ResourceType::parse(n.as_ref()))
+            .collect();
+        self
+    }
+
+    /// Whether nothing is configured to block.
+    pub fn is_empty(&self) -> bool {
+        self.urls.is_empty() && self.resources.is_empty()
+    }
+}
+
+/// Start intercepting requests on `page` and blocking those matching `config`
+/// (by URL glob and/or resource category).
 ///
 /// The page's browser MUST have been launched with request interception enabled
-/// (non-empty [`crate::LaunchOptions::block_urls`], or
+/// (non-empty [`crate::LaunchOptions::block_urls`] /
+/// [`crate::LaunchOptions::block_resources`], or
 /// `BrowserConfig::builder().enable_request_intercept()`), otherwise no
 /// `Fetch.requestPaused` events arrive and this is a no-op.
 ///
 /// Returns a [`BlockGuard`]; keep it alive for as long as you want blocking
-/// active. Matching requests are failed with `BlockedByClient` (the navigation
-/// is cancelled — the current page stays), everything else is continued.
-pub async fn block_navigations<I, S>(page: &Page, patterns: I) -> Result<BlockGuard>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    let blocklist = BlockList::new(patterns);
+/// active. Matching requests are failed with `BlockedByClient`; everything else
+/// is continued untouched.
+pub async fn block_requests(page: &Page, config: BlockConfig) -> Result<BlockGuard> {
     let mut paused = page
         .event_listener::<EventRequestPaused>()
         .await
@@ -182,8 +311,19 @@ where
     let handle = tokio::spawn(async move {
         while let Some(event) = paused.next().await {
             let request_id = event.request_id.clone();
-            if blocklist.is_blocked(&event.request.url) {
-                tracing::debug!(url = %event.request.url, "blocking navigation/request");
+
+            let url_blocked = config.urls.is_blocked(&event.request.url);
+            let type_blocked = !config.resources.is_empty()
+                && ResourceType::from_cdp(&event.resource_type)
+                    .map(|rt| config.resources.contains(&rt))
+                    .unwrap_or(false);
+
+            if url_blocked || type_blocked {
+                tracing::debug!(
+                    url = %event.request.url,
+                    resource_type = ?event.resource_type,
+                    "blocking request"
+                );
                 let _ = page
                     .execute(FailRequestParams::new(
                         request_id,
@@ -199,6 +339,25 @@ where
     });
 
     Ok(BlockGuard { handle })
+}
+
+/// Convenience: block only URL glob patterns (anti-redirect). Equivalent to
+/// `block_requests(page, BlockConfig::new().urls(patterns))`.
+pub async fn block_navigations<I, S>(page: &Page, patterns: I) -> Result<BlockGuard>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    block_requests(page, BlockConfig::new().urls(patterns)).await
+}
+
+/// Convenience: block only whole resource categories (bandwidth saving).
+/// Equivalent to `block_requests(page, BlockConfig::new().resources(types))`.
+pub async fn block_resources<I>(page: &Page, types: I) -> Result<BlockGuard>
+where
+    I: IntoIterator<Item = ResourceType>,
+{
+    block_requests(page, BlockConfig::new().resources(types)).await
 }
 
 #[cfg(test)]
@@ -239,5 +398,25 @@ mod tests {
         assert!(bl.is_blocked("http://x/ads"));
         assert!(bl.is_blocked("http://tracker.io/"));
         assert!(!bl.is_blocked("http://safe.com/"));
+    }
+
+    #[test]
+    fn resource_type_parse_aliases() {
+        assert_eq!(ResourceType::parse("css"), Some(ResourceType::Stylesheet));
+        assert_eq!(ResourceType::parse("CSS"), Some(ResourceType::Stylesheet));
+        assert_eq!(ResourceType::parse("image"), Some(ResourceType::Image));
+        assert_eq!(ResourceType::parse("img"), Some(ResourceType::Image));
+        assert_eq!(ResourceType::parse("font"), Some(ResourceType::Font));
+        assert_eq!(ResourceType::parse("js"), Some(ResourceType::Script));
+        assert_eq!(ResourceType::parse("nonsense"), None);
+    }
+
+    #[test]
+    fn block_config_from_names_ignores_unknown() {
+        let cfg = BlockConfig::new().resources_from_names(["image", "css", "bogus"]);
+        assert!(cfg.resources.contains(&ResourceType::Image));
+        assert!(cfg.resources.contains(&ResourceType::Stylesheet));
+        assert_eq!(cfg.resources.len(), 2);
+        assert!(!cfg.is_empty());
     }
 }
